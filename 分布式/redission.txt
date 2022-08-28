@@ -1,0 +1,31 @@
+api
+	RLock lock = RedissionClient.getLock("KEY_NAME");
+	lock.lock(); // 无限等待时间
+	lock.tryLock(long waitTime, long lockTime, TimeUnit timeUnit);
+	lock.unLock();
+	lock.isLocked();
+
+结构
+	在redis中是以hash类型存在（默认超时时间30s）
+	key: uuid + 线程id，value: 重入次数
+
+流程
+	1.线程获取锁
+		成功
+			1.根据hash算法散列到其中一台master上，并且同步到slave（若有）；
+			2.看门狗监控是否还是持有锁，若有，监控到期时间+10s；
+		失败：
+			线程自旋等待（按设置的超时时间来）；
+
+特性
+	1.可重入，以线程为单位，同一个线程可以多次调用上锁api，并且对应的value，即可重入次
+	数+1；
+	2.可以通过设置超时时间防死锁；
+
+缺陷
+	1.在异步复制，在宕机-主从切换的过程中，会有脏数据问题；
+	2.主服务器还没有复制锁到从服务器就宕机，从服务器升级为主服务器，此时上面没有锁，其
+	它客户端依旧可以上锁，就会有问题；
+
+备注
+	unlock一定要放在finally；
